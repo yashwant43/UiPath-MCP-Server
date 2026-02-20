@@ -106,19 +106,6 @@ class Settings(BaseSettings):
         return base
 
     @property
-    def audit_api_url(self) -> str | None:
-        """
-        Base URL for the modern Audit REST API.
-
-        Cloud: https://cloud.uipath.com/{org}/audit_/api  (deprecated OData AuditLogs
-               endpoint was removed in Dec 2023; requires PM.Audit.Read scope)
-        On-prem / PAT: None — caller should fall back to OData AuditLogs.
-        """
-        if self.auth_mode == AuthMode.CLOUD and self.uipath_org_name:
-            return f"https://cloud.uipath.com/{self.uipath_org_name}/audit_/api"
-        return None
-
-    @property
     def cloud_token_url(self) -> str:
         return f"https://cloud.uipath.com/{self.uipath_org_name}/identity_/connect/token"
 
