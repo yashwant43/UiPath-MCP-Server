@@ -118,6 +118,7 @@ from .tools import (  # noqa: E402
     audit,
     folders,
     jobs,
+    packages,
     queues,
     robots,
     schedules,
@@ -133,6 +134,7 @@ audit.register(mcp)
 schedules.register(mcp)
 folders.register(mcp)
 webhooks.register(mcp)
+packages.register(mcp)
 
 # ── Register resources ────────────────────────────────────────────────────────
 
