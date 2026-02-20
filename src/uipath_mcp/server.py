@@ -85,6 +85,30 @@ async def _lifespan(server: FastMCP) -> AsyncIterator[AppState]:  # noqa: ARG001
     )
 
     auth = create_auth_strategy(settings)
+
+    # Register tools here (inside lifespan) so read_only_mode is available.
+    # Each module's register() skips write tools when read_only=True.
+    from .tools import (  # noqa: PLC0415
+        analytics, assets, audit, folders, jobs, packages, queues, robots, schedules, webhooks,
+    )
+    from . import resources as _resources  # noqa: PLC0415
+
+    ro = settings.read_only_mode
+    jobs.register(mcp, read_only=ro)
+    queues.register(mcp, read_only=ro)
+    robots.register(mcp)
+    assets.register(mcp, read_only=ro)
+    analytics.register(mcp)
+    audit.register(mcp)
+    schedules.register(mcp, read_only=ro)
+    folders.register(mcp)
+    webhooks.register(mcp, read_only=ro)
+    packages.register(mcp)
+    _resources.register(mcp)
+
+    if ro:
+        logger.info("READ_ONLY_MODE=true — write tools are not registered")
+
     async with UiPathClient(settings, auth) as client:
         logger.info(
             f"Connected to {settings.orchestrator_base_url} "
@@ -109,39 +133,6 @@ mcp = FastMCP(
     ),
     lifespan=_lifespan,
 )
-
-# ── Register tools (imported here to avoid circular imports) ──────────────────
-
-from .tools import (  # noqa: E402
-    analytics,
-    assets,
-    audit,
-    folders,
-    jobs,
-    packages,
-    queues,
-    robots,
-    schedules,
-    webhooks,
-)
-
-jobs.register(mcp)
-queues.register(mcp)
-robots.register(mcp)
-assets.register(mcp)
-analytics.register(mcp)
-audit.register(mcp)
-schedules.register(mcp)
-folders.register(mcp)
-webhooks.register(mcp)
-packages.register(mcp)
-
-# ── Register resources ────────────────────────────────────────────────────────
-
-from . import resources as _resources  # noqa: E402
-
-_resources.register(mcp)
-
 
 # ── CLI entry point ───────────────────────────────────────────────────────────
 

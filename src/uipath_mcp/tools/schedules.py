@@ -21,7 +21,7 @@ def _state(ctx: Context) -> Any:
     return ctx.request_context.lifespan_context
 
 
-def register(mcp: FastMCP) -> None:
+def register(mcp: FastMCP, read_only: bool = False) -> None:
 
     @mcp.tool()
     async def list_schedules(
@@ -59,61 +59,63 @@ def register(mcp: FastMCP) -> None:
         except UiPathError as e:
             return json.dumps(e.to_dict())
 
-    @mcp.tool()
-    async def enable_schedule(
-        ctx: Context,
-        schedule_id: Annotated[int, Field(description="Schedule ID to enable")],
-        folder_id: Annotated[int | None, Field(description="Folder ID")] = None,
-    ) -> str:
-        """Enable a disabled process schedule."""
-        st = _state(ctx)
-        try:
-            body = {"enabled": True, "scheduleIds": [schedule_id]}
-            await st.client.post(
-                "ProcessSchedules", body=body, action="SetEnabled", folder_id=folder_id
-            )
-            return json.dumps({"message": f"Schedule {schedule_id} enabled"})
-        except UiPathError as e:
-            return json.dumps(e.to_dict())
+    if not read_only:
 
-    @mcp.tool()
-    async def disable_schedule(
-        ctx: Context,
-        schedule_id: Annotated[int, Field(description="Schedule ID to disable")],
-        folder_id: Annotated[int | None, Field(description="Folder ID")] = None,
-    ) -> str:
-        """Disable an active process schedule."""
-        st = _state(ctx)
-        try:
-            body = {"enabled": False, "scheduleIds": [schedule_id]}
-            await st.client.post(
-                "ProcessSchedules", body=body, action="SetEnabled", folder_id=folder_id
-            )
-            return json.dumps({"message": f"Schedule {schedule_id} disabled"})
-        except UiPathError as e:
-            return json.dumps(e.to_dict())
+        @mcp.tool()
+        async def enable_schedule(
+            ctx: Context,
+            schedule_id: Annotated[int, Field(description="Schedule ID to enable")],
+            folder_id: Annotated[int | None, Field(description="Folder ID")] = None,
+        ) -> str:
+            """Enable a disabled process schedule."""
+            st = _state(ctx)
+            try:
+                body = {"enabled": True, "scheduleIds": [schedule_id]}
+                await st.client.post(
+                    "ProcessSchedules", body=body, action="SetEnabled", folder_id=folder_id
+                )
+                return json.dumps({"message": f"Schedule {schedule_id} enabled"})
+            except UiPathError as e:
+                return json.dumps(e.to_dict())
 
-    @mcp.tool()
-    async def set_schedule_enabled(
-        ctx: Context,
-        schedule_ids: Annotated[list[int], Field(description="List of schedule IDs")],
-        enabled: Annotated[bool, Field(description="True to enable, False to disable")],
-        folder_id: Annotated[int | None, Field(description="Folder ID")] = None,
-    ) -> str:
-        """Bulk enable or disable multiple schedules in one call."""
-        st = _state(ctx)
-        try:
-            body = {"enabled": enabled, "scheduleIds": schedule_ids}
-            await st.client.post(
-                "ProcessSchedules", body=body, action="SetEnabled", folder_id=folder_id
-            )
-            action_verb = "enabled" if enabled else "disabled"
-            return json.dumps(
-                {"message": f"{len(schedule_ids)} schedule(s) {action_verb}",
-                 "schedule_ids": schedule_ids}
-            )
-        except UiPathError as e:
-            return json.dumps(e.to_dict())
+        @mcp.tool()
+        async def disable_schedule(
+            ctx: Context,
+            schedule_id: Annotated[int, Field(description="Schedule ID to disable")],
+            folder_id: Annotated[int | None, Field(description="Folder ID")] = None,
+        ) -> str:
+            """Disable an active process schedule."""
+            st = _state(ctx)
+            try:
+                body = {"enabled": False, "scheduleIds": [schedule_id]}
+                await st.client.post(
+                    "ProcessSchedules", body=body, action="SetEnabled", folder_id=folder_id
+                )
+                return json.dumps({"message": f"Schedule {schedule_id} disabled"})
+            except UiPathError as e:
+                return json.dumps(e.to_dict())
+
+        @mcp.tool()
+        async def set_schedule_enabled(
+            ctx: Context,
+            schedule_ids: Annotated[list[int], Field(description="List of schedule IDs")],
+            enabled: Annotated[bool, Field(description="True to enable, False to disable")],
+            folder_id: Annotated[int | None, Field(description="Folder ID")] = None,
+        ) -> str:
+            """Bulk enable or disable multiple schedules in one call."""
+            st = _state(ctx)
+            try:
+                body = {"enabled": enabled, "scheduleIds": schedule_ids}
+                await st.client.post(
+                    "ProcessSchedules", body=body, action="SetEnabled", folder_id=folder_id
+                )
+                action_verb = "enabled" if enabled else "disabled"
+                return json.dumps(
+                    {"message": f"{len(schedule_ids)} schedule(s) {action_verb}",
+                     "schedule_ids": schedule_ids}
+                )
+            except UiPathError as e:
+                return json.dumps(e.to_dict())
 
     @mcp.tool()
     async def get_next_executions(

@@ -88,6 +88,13 @@ class Settings(BaseSettings):
     mcp_host: str = Field(default="127.0.0.1")
     mcp_port: int = Field(default=8000, ge=1024, le=65535)
 
+    # ── Read-only mode ───────────────────────────────────────────────────────
+    read_only_mode: bool = Field(
+        default=False,
+        description="When true, only read-only (list/get) tools are registered. "
+                    "Write tools (start_job, add_queue_item, create_asset, etc.) are omitted.",
+    )
+
     # ── Logging ──────────────────────────────────────────────────────────────
     log_level: LogLevel = Field(default=LogLevel.INFO)
     log_json: bool = Field(default=False)

@@ -23,7 +23,7 @@ def _state(ctx: Context) -> Any:
     return ctx.request_context.lifespan_context
 
 
-def register(mcp: FastMCP) -> None:
+def register(mcp: FastMCP, read_only: bool = False) -> None:
 
     # ── list_jobs ─────────────────────────────────────────────────────────────
 
@@ -306,130 +306,118 @@ def register(mcp: FastMCP) -> None:
         except UiPathError as e:
             return json.dumps(e.to_dict())
 
-    # ── start_job ─────────────────────────────────────────────────────────────
+    # ── start_job / stop_job / bulk_stop_jobs (write — omitted in read_only mode) ─
 
-    @mcp.tool()
-    async def start_job(
-        ctx: Context,
-        process_name: Annotated[str, Field(description="Process/release name to start")],
-        folder_id: Annotated[int | None, Field(description="Folder ID where the process lives")] = None,
-        input_arguments: Annotated[
-            dict[str, Any] | None,
-            Field(description='Input arguments as JSON object e.g. {"InputPath": "C:/data"}'),
-        ] = None,
-        strategy: Annotated[
-            str,
-            Field(description="Allocation strategy: All | Specific | JobsCount | RobotCount"),
-        ] = "All",
-        robot_ids: Annotated[
-            list[int] | None, Field(description="Specific robot IDs (required when strategy=Specific)")
-        ] = None,
-        jobs_count: Annotated[
-            int | None, Field(description="Number of job instances (used with JobsCount strategy)")
-        ] = None,
-    ) -> str:
-        """
-        Start a new job for a process.
-        Step 1: Looks up the release key by process name.
-        Step 2: Starts the job using the release key.
-        Returns the list of created jobs with their IDs and initial states.
-        """
-        st = _state(ctx)
-        try:
-            # Step 1 — find release key
-            releases_data = await st.client.get(
-                "Releases",
-                params=ODataParams().filter(f"Name eq '{process_name}'").top(1).build(),
-                folder_id=folder_id,
-            )
-            releases = releases_data.get("value", [])
-            if not releases:
-                return json.dumps(
-                    {"error": f"Process '{process_name}' not found in folder {folder_id}"}
-                )
-            release_key: str = releases[0]["Key"]
+    if not read_only:
 
-            # Step 2 — build start info
-            start_info: dict[str, Any] = {
-                "ReleaseKey": release_key,
-                "Strategy": strategy,
-                "Source": "Manual",
-            }
-            if robot_ids:
-                start_info["RobotIds"] = robot_ids
-            if jobs_count is not None:
-                start_info["JobsCount"] = jobs_count
-            if input_arguments:
-                start_info["InputArguments"] = json.dumps(input_arguments)
-
-            result = await st.client.post(
-                "Jobs",
-                body={"startInfo": start_info},
-                action="StartJobs",
-                folder_id=folder_id,
-            )
-            started = [Job.model_validate(j).model_dump() for j in result.get("value", [])]
-            return json.dumps(
-                {
-                    "message": f"Started {len(started)} job(s) for '{process_name}'",
-                    "jobs": started,
-                },
-                default=str,
-            )
-        except UiPathError as e:
-            return json.dumps(e.to_dict())
-
-    # ── stop_job ──────────────────────────────────────────────────────────────
-
-    @mcp.tool()
-    async def stop_job(
-        ctx: Context,
-        job_id: Annotated[int, Field(description="Job ID to stop")],
-        folder_id: Annotated[int | None, Field(description="Folder ID")] = None,
-        strategy: Annotated[
-            str, Field(description="SoftStop (graceful) or Kill (immediate)")
-        ] = "SoftStop",
-    ) -> str:
-        """Stop a running or pending job."""
-        st = _state(ctx)
-        try:
-            body = {"jobId": job_id, "strategy": strategy}
-            await st.client.post("Jobs", body=body, action="StopJob", folder_id=folder_id)
-            return json.dumps(
-                {"message": f"Stop ({strategy}) requested for job {job_id}"}
-            )
-        except UiPathError as e:
-            return json.dumps(e.to_dict())
-
-    # ── bulk_stop_jobs ⭐new ──────────────────────────────────────────────────
-
-    @mcp.tool()
-    async def bulk_stop_jobs(
-        ctx: Context,
-        job_ids: Annotated[list[int], Field(description="List of job IDs to stop")],
-        folder_id: Annotated[int | None, Field(description="Folder ID")] = None,
-        strategy: Annotated[str, Field(description="SoftStop or Kill")] = "SoftStop",
-    ) -> str:
-        """
-        Stop multiple jobs at once.
-        Sends a stop request for each job ID concurrently and reports results.
-        """
-        st = _state(ctx)
-        results: list[dict[str, Any]] = []
-
-        async def stop_one(jid: int) -> dict[str, Any]:
+        @mcp.tool()
+        async def start_job(
+            ctx: Context,
+            process_name: Annotated[str, Field(description="Process/release name to start")],
+            folder_id: Annotated[int | None, Field(description="Folder ID where the process lives")] = None,
+            input_arguments: Annotated[
+                dict[str, Any] | None,
+                Field(description='Input arguments as JSON object e.g. {"InputPath": "C:/data"}'),
+            ] = None,
+            strategy: Annotated[
+                str,
+                Field(description="Allocation strategy: All | Specific | JobsCount | RobotCount"),
+            ] = "All",
+            robot_ids: Annotated[
+                list[int] | None, Field(description="Specific robot IDs (required when strategy=Specific)")
+            ] = None,
+            jobs_count: Annotated[
+                int | None, Field(description="Number of job instances (used with JobsCount strategy)")
+            ] = None,
+        ) -> str:
+            """
+            Start a new job for a process.
+            Step 1: Looks up the release key by process name.
+            Step 2: Starts the job using the release key.
+            Returns the list of created jobs with their IDs and initial states.
+            """
+            st = _state(ctx)
             try:
-                body = {"jobId": jid, "strategy": strategy}
-                await st.client.post("Jobs", body=body, action="StopJob", folder_id=folder_id)
-                return {"job_id": jid, "status": "stop_requested"}
+                releases_data = await st.client.get(
+                    "Releases",
+                    params=ODataParams().filter(f"Name eq '{process_name}'").top(1).build(),
+                    folder_id=folder_id,
+                )
+                releases = releases_data.get("value", [])
+                if not releases:
+                    return json.dumps(
+                        {"error": f"Process '{process_name}' not found in folder {folder_id}"}
+                    )
+                release_key: str = releases[0]["Key"]
+                start_info: dict[str, Any] = {
+                    "ReleaseKey": release_key,
+                    "Strategy": strategy,
+                    "Source": "Manual",
+                }
+                if robot_ids:
+                    start_info["RobotIds"] = robot_ids
+                if jobs_count is not None:
+                    start_info["JobsCount"] = jobs_count
+                if input_arguments:
+                    start_info["InputArguments"] = json.dumps(input_arguments)
+                result = await st.client.post(
+                    "Jobs",
+                    body={"startInfo": start_info},
+                    action="StartJobs",
+                    folder_id=folder_id,
+                )
+                started = [Job.model_validate(j).model_dump() for j in result.get("value", [])]
+                return json.dumps(
+                    {"message": f"Started {len(started)} job(s) for '{process_name}'", "jobs": started},
+                    default=str,
+                )
             except UiPathError as e:
-                return {"job_id": jid, "status": "error", "error": e.message}
+                return json.dumps(e.to_dict())
 
-        results = list(await asyncio.gather(*[stop_one(jid) for jid in job_ids]))
-        success = sum(1 for r in results if r["status"] == "stop_requested")
-        return json.dumps(
-            {"total": len(job_ids), "success": success, "results": results}, default=str
-        )
+        @mcp.tool()
+        async def stop_job(
+            ctx: Context,
+            job_id: Annotated[int, Field(description="Job ID to stop")],
+            folder_id: Annotated[int | None, Field(description="Folder ID")] = None,
+            strategy: Annotated[
+                str, Field(description="SoftStop (graceful) or Kill (immediate)")
+            ] = "SoftStop",
+        ) -> str:
+            """Stop a running or pending job."""
+            st = _state(ctx)
+            try:
+                body = {"jobId": job_id, "strategy": strategy}
+                await st.client.post("Jobs", body=body, action="StopJob", folder_id=folder_id)
+                return json.dumps({"message": f"Stop ({strategy}) requested for job {job_id}"})
+            except UiPathError as e:
+                return json.dumps(e.to_dict())
+
+        @mcp.tool()
+        async def bulk_stop_jobs(
+            ctx: Context,
+            job_ids: Annotated[list[int], Field(description="List of job IDs to stop")],
+            folder_id: Annotated[int | None, Field(description="Folder ID")] = None,
+            strategy: Annotated[str, Field(description="SoftStop or Kill")] = "SoftStop",
+        ) -> str:
+            """
+            Stop multiple jobs at once.
+            Sends a stop request for each job ID concurrently and reports results.
+            """
+            st = _state(ctx)
+
+            async def stop_one(jid: int) -> dict[str, Any]:
+                try:
+                    body = {"jobId": jid, "strategy": strategy}
+                    await st.client.post("Jobs", body=body, action="StopJob", folder_id=folder_id)
+                    return {"job_id": jid, "status": "stop_requested"}
+                except UiPathError as e:
+                    return {"job_id": jid, "status": "error", "error": e.message}
+
+            results = list(await asyncio.gather(*[stop_one(jid) for jid in job_ids]))
+            success = sum(1 for r in results if r["status"] == "stop_requested")
+            return json.dumps(
+                {"total": len(job_ids), "success": success, "results": results}, default=str
+            )
 
     # ── wait_for_job ⭐new ────────────────────────────────────────────────────
 
