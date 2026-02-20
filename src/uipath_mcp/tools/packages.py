@@ -132,7 +132,7 @@ def register(mcp: FastMCP) -> None:
 
             pkg = packages[0]
             resolved_version = pkg.get("Version")
-            pkg_key = f"{package_id}.{resolved_version}"
+            pkg_key = f"{package_id}:{resolved_version}"
 
             # Step 2: Download the .nupkg file
             download_url = (
