@@ -109,12 +109,15 @@ UIPATH_TENANT_NAME=DefaultTenant
         "UIPATH_CLIENT_SECRET": "your_client_secret",
         "UIPATH_ORG_NAME": "your_org",
         "UIPATH_TENANT_NAME": "DefaultTenant",
-        "UIPATH_FOLDER_ID": "1"
+        "UIPATH_FOLDER_ID": "1",
+        "READ_ONLY_MODE": "false"
       }
     }
   }
 }
 ```
+
+> Set `"READ_ONLY_MODE": "true"` to expose only the 38 read-only tools and hide all write/delete operations.
 
 ### If running from source
 
@@ -135,7 +138,8 @@ UIPATH_TENANT_NAME=DefaultTenant
         "UIPATH_CLIENT_SECRET": "your_client_secret",
         "UIPATH_ORG_NAME": "your_org",
         "UIPATH_TENANT_NAME": "DefaultTenant",
-        "UIPATH_FOLDER_ID": "1"
+        "UIPATH_FOLDER_ID": "1",
+        "READ_ONLY_MODE": "false"
       }
     }
   }
