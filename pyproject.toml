@@ -28,6 +28,8 @@ dependencies = [
     "loguru>=0.7.3",
     "rich>=13.9.0",
     "python-dotenv>=1.0.0",
+    "keyring>=25.0.0",
+    "click>=8.0.0",
 ]
 
 [project.optional-dependencies]
@@ -41,7 +43,7 @@ dev = [
 ]
 
 [project.scripts]
-uipath-mcp = "uipath_mcp.server:main"
+uipath-mcp = "uipath_mcp.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/uipath_mcp"]

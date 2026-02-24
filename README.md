@@ -94,9 +94,49 @@ UIPATH_TENANT_NAME=DefaultTenant
 
 ---
 
+## Secure Credential Storage (Recommended)
+
+Instead of putting secrets in plaintext config files, store them in your OS keyring
+(Windows Credential Manager, macOS Keychain, or Linux Secret Service):
+
+```bash
+# Interactive setup — prompts for credentials and stores them securely
+uipath-mcp auth setup
+
+# Verify stored credentials
+uipath-mcp auth test
+
+# Remove all stored credentials
+uipath-mcp auth clear
+```
+
+**Priority order:** Keyring > Environment variables > .env file
+
+When using keyring, your Claude Desktop config needs zero secrets:
+
+```json
+{
+  "mcpServers": {
+    "uipath": {
+      "command": "uipath-mcp"
+    }
+  }
+}
+```
+
+> Environment variables and `.env` files still work as a fallback (useful for CI/CD and Docker).
+
+---
+
 ## Claude Desktop / Cursor Configuration
 
-### If installed via PyPI (`uv tool install uipath-orchestrator-mcp`)
+### Recommended: Keyring (no secrets in config)
+
+Run `uipath-mcp auth setup` first, then use the minimal config above.
+
+### Alternative: Inline env vars
+
+If you prefer to pass credentials directly (e.g., CI/CD):
 
 ```json
 {
@@ -261,12 +301,14 @@ uv run mypy src/
 
 ```
 src/uipath_mcp/
-├── server.py     FastMCP + lifespan (initialises client once)
-├── config.py     Pydantic Settings (all env vars, cross-field validation)
-├── auth.py       3 auth strategies + module-level TokenCache with asyncio.Lock
-├── client.py     httpx AsyncClient + tenacity retry + ODataParams builder + paginate()
-├── models.py     Pydantic v2 models (Job, Queue, Robot, Asset, ...)
-├── resources.py  MCP resources (config, help guides)
+├── cli.py            Click CLI dispatcher (auth setup/test/clear + server start)
+├── server.py         FastMCP + lifespan (initialises client once)
+├── config.py         Pydantic Settings (keyring → env vars → .env → defaults)
+├── keyring_store.py  OS keyring integration (store/load/clear credentials)
+├── auth.py           3 auth strategies + module-level TokenCache with asyncio.Lock
+├── client.py         httpx AsyncClient + tenacity retry + ODataParams builder + paginate()
+├── models.py         Pydantic v2 models (Job, Queue, Robot, Asset, ...)
+├── resources.py      MCP resources (config, help guides)
 └── tools/
     ├── jobs.py      analytics.py
     ├── queues.py    audit.py

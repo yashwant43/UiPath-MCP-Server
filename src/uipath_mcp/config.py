@@ -2,9 +2,10 @@
 UiPath MCP Server Configuration.
 
 Priority order (highest → lowest):
-  1. Environment variables
-  2. .env file
-  3. Defaults defined here
+  1. OS keyring (via ``uipath-mcp auth setup``)
+  2. Environment variables
+  3. .env file
+  4. Defaults defined here
 
 Authentication modes are mutually exclusive — set AUTH_MODE and provide
 the corresponding credentials:
@@ -148,7 +149,8 @@ class Settings(BaseSettings):
             env_names = ", ".join(f.upper() for f in missing)
             raise ValueError(
                 f"Auth mode '{self.auth_mode.value}' requires these env vars: {env_names}\n"
-                f"Copy .env.example to .env and fill in the missing values."
+                f"Run 'uipath-mcp auth setup' to store credentials in the OS keyring,\n"
+                f"or copy .env.example to .env and fill in the missing values."
             )
         return self
 
@@ -159,8 +161,14 @@ _settings: Settings | None = None
 
 
 def get_settings() -> Settings:
-    """Return the validated Settings singleton (created on first call)."""
+    """Return the validated Settings singleton (created on first call).
+
+    Credentials are loaded from the OS keyring first (if available), then
+    env vars and ``.env`` fill in any gaps.
+    """
     global _settings
     if _settings is None:
-        _settings = Settings()
+        from .keyring_store import load_from_keyring
+
+        _settings = Settings(**load_from_keyring())
     return _settings
