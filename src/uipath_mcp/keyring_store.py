@@ -57,6 +57,38 @@ def _get_keyring():
         return None
 
 
+def _migrate_legacy_credentials(kr) -> dict[str, Any]:
+    """Migrate credentials from the old uipath-mcp service to uipath-mcp/default."""
+    legacy: dict[str, Any] = {}
+    try:
+        for field in KEYRING_FIELDS:
+            value = kr.get_password(SERVICE_NAME, field)
+            if value is not None:
+                legacy[field] = value
+    except Exception:
+        return {}
+
+    if not legacy:
+        return {}
+
+    logger.debug(f"Migrating {len(legacy)} legacy credential(s) to 'default' profile")
+    svc = service_name_for_profile("default")
+    try:
+        for field, value in legacy.items():
+            kr.set_password(svc, field, value)
+        add_profile_to_index("default")
+        for field in legacy:
+            try:
+                kr.delete_password(SERVICE_NAME, field)
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.warning(f"Migration failed: {exc}")
+        return {}
+
+    return legacy
+
+
 def load_from_keyring(profile: str = "default") -> dict[str, Any]:
     """Load all stored credentials from the OS keyring.
 
@@ -77,6 +109,10 @@ def load_from_keyring(profile: str = "default") -> dict[str, Any]:
     except Exception as exc:
         logger.warning(f"Failed to read from keyring: {exc}. Falling back to env vars.")
         return {}
+
+    # Migrate legacy (un-namespaced) credentials to the "default" profile
+    if not values and profile == "default":
+        values = _migrate_legacy_credentials(kr)
 
     if values:
         logger.debug(f"Loaded {len(values)} credential(s) from keyring (profile={profile})")

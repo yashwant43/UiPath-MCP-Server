@@ -165,16 +165,17 @@ class TestLoadFromKeyringProfile:
         assert result["uipath_client_id"] == "cid"
 
     def test_default_profile_fallback(self):
-        """Calling without profile arg uses 'default'."""
+        """Calling without profile arg uses 'default', then falls back to legacy migration."""
         mock_kr = MagicMock()
         mock_kr.get_password.return_value = None
 
         with patch("uipath_mcp.keyring_store._get_keyring", return_value=mock_kr):
             load_from_keyring()
 
-        # All calls should have used the default service name
-        for call in mock_kr.get_password.call_args_list:
-            assert call[0][0] == "uipath-mcp/default"
+        # First batch of calls reads from uipath-mcp/default (the profile service)
+        # Then migration reads from uipath-mcp (the legacy service)
+        services_called = {call[0][0] for call in mock_kr.get_password.call_args_list}
+        assert "uipath-mcp/default" in services_called
 
 
 # ── store_credential(profile=...) ───────────────────────────────────────────
@@ -270,3 +271,73 @@ class TestProfileIndex:
     def test_remove_nonexistent_is_noop(self, mock_get, mock_set):
         remove_profile_from_index("missing")
         mock_set.assert_not_called()
+
+
+# ── _migrate_legacy_credentials / load_from_keyring migration ──────────────
+
+
+class TestMigrateLegacyCredentials:
+    def test_migrates_old_credentials_to_default_profile(self):
+        """When uipath-mcp has creds but uipath-mcp/default doesn't, migrate."""
+        legacy_data = {
+            ("uipath-mcp", "auth_mode"): "pat",
+            ("uipath-mcp", "uipath_pat"): "old_token",
+            ("uipath-mcp", "uipath_base_url"): "https://example.com",
+            ("uipath-mcp", "uipath_tenant_name"): "Tenant1",
+        }
+
+        def mock_get(svc, key):
+            return legacy_data.get((svc, key))
+
+        mock_kr = MagicMock()
+        mock_kr.get_password.side_effect = mock_get
+        mock_kr.set_password = MagicMock()
+        mock_kr.delete_password = MagicMock()
+
+        with (
+            patch("uipath_mcp.keyring_store._get_keyring", return_value=mock_kr),
+            patch("uipath_mcp.keyring_store.add_profile_to_index") as mock_add_idx,
+        ):
+            result = load_from_keyring(profile="default")
+
+        assert result["auth_mode"] == "pat"
+        assert result["uipath_pat"] == "old_token"
+
+        set_calls = {(c.args[0], c.args[1]): c.args[2] for c in mock_kr.set_password.call_args_list}
+        assert set_calls[("uipath-mcp/default", "auth_mode")] == "pat"
+        assert set_calls[("uipath-mcp/default", "uipath_pat")] == "old_token"
+
+        delete_calls = [(c.args[0], c.args[1]) for c in mock_kr.delete_password.call_args_list]
+        assert ("uipath-mcp", "auth_mode") in delete_calls
+
+        mock_add_idx.assert_called_once_with("default")
+
+    def test_no_migration_when_default_has_creds(self):
+        """If uipath-mcp/default already has credentials, skip migration."""
+        data = {
+            ("uipath-mcp/default", "auth_mode"): "cloud",
+            ("uipath-mcp", "auth_mode"): "pat",
+        }
+
+        def mock_get(svc, key):
+            return data.get((svc, key))
+
+        mock_kr = MagicMock()
+        mock_kr.get_password.side_effect = mock_get
+
+        with patch("uipath_mcp.keyring_store._get_keyring", return_value=mock_kr):
+            result = load_from_keyring(profile="default")
+
+        assert result["auth_mode"] == "cloud"
+        mock_kr.set_password.assert_not_called()
+
+    def test_no_migration_for_non_default_profile(self):
+        """Migration only runs for the 'default' profile."""
+        mock_kr = MagicMock()
+        mock_kr.get_password.return_value = None
+
+        with patch("uipath_mcp.keyring_store._get_keyring", return_value=mock_kr):
+            result = load_from_keyring(profile="prod")
+
+        assert result == {}
+        mock_kr.set_password.assert_not_called()
