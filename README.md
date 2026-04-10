@@ -118,13 +118,66 @@ When using keyring, your Claude Desktop config needs zero secrets:
 {
   "mcpServers": {
     "uipath": {
-      "command": "uipath-mcp"
+      "command": "uipath-mcp" 
+    }
+  }
+}
+
+Note: in the command: Replace it with the installed path if not working: ex: C:/Users/UiPath-MCP-Server/.venv/Scripts/uipath-mcp.exe
+```
+
+> Environment variables and `.env` files still work as a fallback (useful for CI/CD and Docker).
+
+### Multiple Profiles
+
+Store credentials for multiple tenants and switch between them per session:
+
+```bash
+# Setup profiles — auto-derives name from org/tenant, or use --profile
+uipath-mcp auth setup                          # prompts for profile name
+uipath-mcp auth setup --profile staging         # explicit name
+
+# List all stored profiles
+uipath-mcp auth list
+
+# Test a specific profile
+uipath-mcp auth test --profile staging
+
+# Start server with a profile
+uipath-mcp --profile staging
+
+# Remove a profile
+uipath-mcp auth clear --profile staging
+```
+
+Profile resolution order: `--profile` flag > `UIPATH_PROFILE` env var > `"default"`
+
+Each profile can have its own read-only mode setting (prompted during setup).
+
+**Claude Desktop with profiles:**
+
+```json
+{
+  "mcpServers": {
+    "uipath-prod": {
+      "command": "uipath-mcp",
+      "args": ["--profile", "prod"]
+    },
+    "uipath-staging": {
+      "command": "uipath-mcp",
+      "args": ["--profile", "staging"]
     }
   }
 }
 ```
 
-> Environment variables and `.env` files still work as a fallback (useful for CI/CD and Docker).
+**Claude Code with profiles:**
+
+```bash
+uipath-mcp --profile prod
+# or via env var:
+UIPATH_PROFILE=prod uipath-mcp
+```
 
 ---
 
@@ -269,6 +322,8 @@ Read-only resources available to AI clients:
 | `UIPATH_PASSWORD` | On-prem password | — |
 | `UIPATH_PAT` | Personal Access Token | — |
 | `UIPATH_FOLDER_ID` | Default folder ID | — |
+| `UIPATH_PROFILE` | Keyring profile name | `default` |
+| `READ_ONLY_MODE` | Disable write tools | `false` |
 | `MCP_TRANSPORT` | stdio \| sse \| streamable-http | `stdio` |
 | `MCP_HOST` | Host for HTTP transport | `127.0.0.1` |
 | `MCP_PORT` | Port for HTTP transport | `8000` |
