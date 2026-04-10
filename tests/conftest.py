@@ -58,7 +58,11 @@ def reset_token_cache() -> None:
 
 @pytest.fixture(autouse=True)
 def no_keyring():
-    """Prevent keyring from being used during tests."""
+    """Prevent keyring from being used during tests.
+
+    Note: load_from_keyring accepts a ``profile`` kwarg, but MagicMock
+    handles extra keyword arguments transparently so no change is needed.
+    """
     with patch("uipath_mcp.keyring_store.load_from_keyring", return_value={}):
         yield
 

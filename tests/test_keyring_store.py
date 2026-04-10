@@ -5,10 +5,14 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from uipath_mcp.keyring_store import (
+    KEYRING_FIELDS,
     SERVICE_NAME,
     _get_keyring,
     clear_all,
+    delete_credential,
     load_from_keyring,
+    read_all,
+    service_name_for_profile,
     store_credential,
 )
 
@@ -89,7 +93,7 @@ class TestStoreCredential:
     @patch("keyring.set_password")
     def test_stores_value(self, mock_set):
         store_credential("uipath_pat", "my_token")
-        mock_set.assert_called_once_with(SERVICE_NAME, "uipath_pat", "my_token")
+        mock_set.assert_called_once_with("uipath-mcp/default", "uipath_pat", "my_token")
 
 
 # ── clear_all() ──────────────────────────────────────────────────────────────
@@ -105,6 +109,7 @@ class TestClearAll:
         calls = iter(range(100))
 
         def side_effect(svc, key):
+            assert svc == "uipath-mcp/default"
             n = next(calls)
             if n >= 3:
                 raise mock_errors.PasswordDeleteError("not found")
@@ -112,3 +117,107 @@ class TestClearAll:
         mock_delete.side_effect = side_effect
         count = clear_all()
         assert count == 3
+
+
+# ── service_name_for_profile() ──────────────────────────────────────────────
+
+
+class TestServiceNameForProfile:
+    def test_default_profile(self):
+        assert service_name_for_profile("default") == "uipath-mcp/default"
+
+    def test_named_profile(self):
+        assert service_name_for_profile("staging") == "uipath-mcp/staging"
+
+    def test_org_tenant_profile(self):
+        assert service_name_for_profile("myorg/mytenant") == "uipath-mcp/myorg/mytenant"
+
+
+# ── KEYRING_FIELDS ──────────────────────────────────────────────────────────
+
+
+class TestKeyringFields:
+    def test_read_only_mode_in_fields(self):
+        assert "read_only_mode" in KEYRING_FIELDS
+
+
+# ── load_from_keyring(profile=...) ──────────────────────────────────────────
+
+
+class TestLoadFromKeyringProfile:
+    def test_named_profile_loading(self):
+        """Loading a named profile reads from the correct service name."""
+        stored = {"auth_mode": "cloud", "uipath_client_id": "cid"}
+        mock_kr = MagicMock()
+        mock_kr.get_password.side_effect = lambda svc, key: (
+            stored.get(key) if svc == "uipath-mcp/staging" else None
+        )
+
+        with patch("uipath_mcp.keyring_store._get_keyring", return_value=mock_kr):
+            result = load_from_keyring(profile="staging")
+
+        assert result["auth_mode"] == "cloud"
+        assert result["uipath_client_id"] == "cid"
+
+    def test_default_profile_fallback(self):
+        """Calling without profile arg uses 'default'."""
+        mock_kr = MagicMock()
+        mock_kr.get_password.return_value = None
+
+        with patch("uipath_mcp.keyring_store._get_keyring", return_value=mock_kr):
+            load_from_keyring()
+
+        # All calls should have used the default service name
+        for call in mock_kr.get_password.call_args_list:
+            assert call[0][0] == "uipath-mcp/default"
+
+
+# ── store_credential(profile=...) ───────────────────────────────────────────
+
+
+class TestStoreCredentialProfile:
+    @patch("keyring.set_password")
+    def test_stores_to_named_profile(self, mock_set):
+        store_credential("uipath_pat", "tok", profile="prod")
+        mock_set.assert_called_once_with("uipath-mcp/prod", "uipath_pat", "tok")
+
+    @patch("keyring.set_password")
+    def test_stores_to_default_profile(self, mock_set):
+        store_credential("uipath_pat", "tok")
+        mock_set.assert_called_once_with("uipath-mcp/default", "uipath_pat", "tok")
+
+
+# ── delete_credential(profile=...) ──────────────────────────────────────────
+
+
+class TestDeleteCredentialProfile:
+    @patch("keyring.errors")
+    @patch("keyring.delete_password")
+    def test_delete_from_named_profile(self, mock_delete, mock_errors):
+        mock_errors.PasswordDeleteError = type("PasswordDeleteError", (Exception,), {})
+        delete_credential("uipath_pat", profile="staging")
+        mock_delete.assert_called_once_with("uipath-mcp/staging", "uipath_pat")
+
+
+# ── read_all(profile=...) ───────────────────────────────────────────────────
+
+
+class TestReadAllProfile:
+    @patch("keyring.get_password", return_value=None)
+    def test_read_from_named_profile(self, mock_get):
+        read_all(profile="dev")
+        for call in mock_get.call_args_list:
+            assert call[0][0] == "uipath-mcp/dev"
+
+
+# ── clear_all(profile=...) ──────────────────────────────────────────────────
+
+
+class TestClearAllProfile:
+    @patch("keyring.errors")
+    @patch("keyring.delete_password")
+    def test_clear_named_profile(self, mock_delete, mock_errors):
+        mock_errors.PasswordDeleteError = type("PasswordDeleteError", (Exception,), {})
+        clear_all(profile="staging")
+        for call in mock_delete.call_args_list:
+            assert call[0][0] == "uipath-mcp/staging"

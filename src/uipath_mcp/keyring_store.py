@@ -29,7 +29,16 @@ KEYRING_FIELDS: tuple[str, ...] = (
     "uipath_pat",
     "uipath_folder_id",
     "uipath_folder_path",
+    "read_only_mode",
 )
+
+PROFILES_INDEX_SERVICE = f"{SERVICE_NAME}/__profiles__"
+PROFILES_INDEX_KEY = "profiles"
+
+
+def service_name_for_profile(profile: str) -> str:
+    """Return the keyring service name for the given profile."""
+    return f"{SERVICE_NAME}/{profile}"
 
 
 def _get_keyring():
@@ -48,7 +57,7 @@ def _get_keyring():
         return None
 
 
-def load_from_keyring() -> dict[str, Any]:
+def load_from_keyring(profile: str = "default") -> dict[str, Any]:
     """Load all stored credentials from the OS keyring.
 
     Returns a dict of ``{field_name: value}`` for fields that exist.
@@ -58,10 +67,11 @@ def load_from_keyring() -> dict[str, Any]:
     if kr is None:
         return {}
 
+    svc = service_name_for_profile(profile)
     values: dict[str, Any] = {}
     try:
         for field in KEYRING_FIELDS:
-            value = kr.get_password(SERVICE_NAME, field)
+            value = kr.get_password(svc, field)
             if value is not None:
                 values[field] = value
     except Exception as exc:
@@ -69,50 +79,52 @@ def load_from_keyring() -> dict[str, Any]:
         return {}
 
     if values:
-        logger.debug(f"Loaded {len(values)} credential(s) from keyring")
+        logger.debug(f"Loaded {len(values)} credential(s) from keyring (profile={profile})")
     return values
 
 
-def store_credential(field: str, value: str) -> None:
+def store_credential(field: str, value: str, profile: str = "default") -> None:
     """Store a single credential in the OS keyring."""
     import keyring
 
-    keyring.set_password(SERVICE_NAME, field, value)
+    keyring.set_password(service_name_for_profile(profile), field, value)
 
 
-def delete_credential(field: str) -> None:
+def delete_credential(field: str, profile: str = "default") -> None:
     """Delete a single credential from the OS keyring (no-op if absent)."""
     import keyring
     import keyring.errors
 
     try:
-        keyring.delete_password(SERVICE_NAME, field)
+        keyring.delete_password(service_name_for_profile(profile), field)
     except keyring.errors.PasswordDeleteError:
         pass
 
 
-def clear_all() -> int:
+def clear_all(profile: str = "default") -> int:
     """Delete all UiPath credentials from the OS keyring. Returns count deleted."""
     import keyring
     import keyring.errors
 
+    svc = service_name_for_profile(profile)
     count = 0
     for field in KEYRING_FIELDS:
         try:
-            keyring.delete_password(SERVICE_NAME, field)
+            keyring.delete_password(svc, field)
             count += 1
         except keyring.errors.PasswordDeleteError:
             pass
     return count
 
 
-def read_all() -> dict[str, str]:
+def read_all(profile: str = "default") -> dict[str, str]:
     """Read all stored credentials (for display in ``auth test``)."""
     import keyring
 
+    svc = service_name_for_profile(profile)
     result: dict[str, str] = {}
     for field in KEYRING_FIELDS:
-        value = keyring.get_password(SERVICE_NAME, field)
+        value = keyring.get_password(svc, field)
         if value is not None:
             result[field] = value
     return result
