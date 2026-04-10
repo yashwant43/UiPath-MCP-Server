@@ -6,12 +6,17 @@ from unittest.mock import MagicMock, patch
 
 from uipath_mcp.keyring_store import (
     KEYRING_FIELDS,
+    PROFILES_INDEX_KEY,
+    PROFILES_INDEX_SERVICE,
     SERVICE_NAME,
     _get_keyring,
+    add_profile_to_index,
     clear_all,
     delete_credential,
+    list_profiles,
     load_from_keyring,
     read_all,
+    remove_profile_from_index,
     service_name_for_profile,
     store_credential,
 )
@@ -221,3 +226,47 @@ class TestClearAllProfile:
         clear_all(profile="staging")
         for call in mock_delete.call_args_list:
             assert call[0][0] == "uipath-mcp/staging"
+
+
+# ── Profile Index ──────────────────────────────────────────────────────────
+
+
+class TestProfileIndex:
+    @patch("keyring.get_password", return_value=None)
+    def test_list_profiles_empty(self, mock_get):
+        assert list_profiles() == []
+
+    @patch("keyring.get_password", return_value="default,prod")
+    def test_list_profiles_returns_names(self, mock_get):
+        assert list_profiles() == ["default", "prod"]
+        mock_get.assert_called_once_with(PROFILES_INDEX_SERVICE, PROFILES_INDEX_KEY)
+
+    @patch("keyring.set_password")
+    @patch("keyring.get_password", return_value=None)
+    def test_add_first_profile(self, mock_get, mock_set):
+        add_profile_to_index("prod")
+        mock_set.assert_called_once_with(PROFILES_INDEX_SERVICE, PROFILES_INDEX_KEY, "prod")
+
+    @patch("keyring.set_password")
+    @patch("keyring.get_password", return_value="default")
+    def test_add_second_profile(self, mock_get, mock_set):
+        add_profile_to_index("prod")
+        mock_set.assert_called_once_with(PROFILES_INDEX_SERVICE, PROFILES_INDEX_KEY, "default,prod")
+
+    @patch("keyring.set_password")
+    @patch("keyring.get_password", return_value="default,prod")
+    def test_add_duplicate_is_noop(self, mock_get, mock_set):
+        add_profile_to_index("prod")
+        mock_set.assert_not_called()
+
+    @patch("keyring.set_password")
+    @patch("keyring.get_password", return_value="default,prod,staging")
+    def test_remove_profile(self, mock_get, mock_set):
+        remove_profile_from_index("prod")
+        mock_set.assert_called_once_with(PROFILES_INDEX_SERVICE, PROFILES_INDEX_KEY, "default,staging")
+
+    @patch("keyring.set_password")
+    @patch("keyring.get_password", return_value="default,prod,staging")
+    def test_remove_nonexistent_is_noop(self, mock_get, mock_set):
+        remove_profile_from_index("missing")
+        mock_set.assert_not_called()

@@ -117,6 +117,38 @@ def clear_all(profile: str = "default") -> int:
     return count
 
 
+def list_profiles() -> list[str]:
+    """Return a list of all stored profile names."""
+    import keyring
+
+    raw = keyring.get_password(PROFILES_INDEX_SERVICE, PROFILES_INDEX_KEY)
+    if not raw:
+        return []
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+
+def add_profile_to_index(profile: str) -> None:
+    """Add a profile name to the index (idempotent)."""
+    import keyring
+
+    existing = list_profiles()
+    if profile in existing:
+        return
+    existing.append(profile)
+    keyring.set_password(PROFILES_INDEX_SERVICE, PROFILES_INDEX_KEY, ",".join(existing))
+
+
+def remove_profile_from_index(profile: str) -> None:
+    """Remove a profile name from the index (no-op if absent)."""
+    import keyring
+
+    existing = list_profiles()
+    if profile not in existing:
+        return
+    existing.remove(profile)
+    keyring.set_password(PROFILES_INDEX_SERVICE, PROFILES_INDEX_KEY, ",".join(existing))
+
+
 def read_all(profile: str = "default") -> dict[str, str]:
     """Read all stored credentials (for display in ``auth test``)."""
     import keyring
