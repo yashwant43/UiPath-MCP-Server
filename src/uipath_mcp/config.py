@@ -165,11 +165,23 @@ def get_settings(profile: str | None = None) -> Settings:
 
     Credentials are loaded from the OS keyring first (if available), then
     env vars and ``.env`` fill in any gaps.
+
+    Args:
+        profile: Keyring profile name. Resolved as:
+                 explicit value → UIPATH_PROFILE env var → "default".
     """
     global _settings
     if _settings is None:
+        import os
         from .keyring_store import load_from_keyring
 
-        kr_profile = profile if profile is not None else "default"
-        _settings = Settings(**load_from_keyring(kr_profile))
+        resolved_profile = profile or os.environ.get("UIPATH_PROFILE", "default")
+        keyring_data = load_from_keyring(profile=resolved_profile)
+
+        # If READ_ONLY_MODE env var is set, don't pass keyring's read_only_mode
+        # (init kwargs have highest pydantic-settings priority and would override env)
+        if os.environ.get("READ_ONLY_MODE") is not None:
+            keyring_data.pop("read_only_mode", None)
+
+        _settings = Settings(**keyring_data)
     return _settings
