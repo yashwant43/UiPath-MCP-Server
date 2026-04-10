@@ -160,7 +160,7 @@ class Settings(BaseSettings):
 _settings: Settings | None = None
 
 
-def get_settings() -> Settings:
+def get_settings(profile: str | None = None) -> Settings:
     """Return the validated Settings singleton (created on first call).
 
     Credentials are loaded from the OS keyring first (if available), then
@@ -170,5 +170,6 @@ def get_settings() -> Settings:
     if _settings is None:
         from .keyring_store import load_from_keyring
 
-        _settings = Settings(**load_from_keyring())
+        kr_profile = profile if profile is not None else "default"
+        _settings = Settings(**load_from_keyring(kr_profile))
     return _settings
