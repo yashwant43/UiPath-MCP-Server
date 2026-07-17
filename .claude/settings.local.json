@@ -1,11 +1,15 @@
 {
-  "permissions": {
+"permissions": {
     "allow": [
       "Bash(curl:*)",
-      "WebFetch(domain:github.com)",
+      "WebFetch",
+      "WedSearch",
       "WebFetch(domain:docs.uipath.com)",
       "WebFetch(domain:www.uipath.com)",
-      "Bash(uv sync:*)"
+      "Bash"
     ]
+  },
+  "remote": {
+    "defaultEnvironmentId": "env_018s6q7qvi7pfhL1SxLBvdUe"
   }
 }

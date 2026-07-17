@@ -374,7 +374,7 @@ class UiPathClient:
     ) -> dict[str, Any]:
         url = f"{self._odata_url(entity)}({entity_id})"
         response = await self._request("PUT", url, folder_id, json=body)
-        if response.status_code == 204:
+        if response.status_code == 204 or not response.content:
             return {}
         return response.json()
 
