@@ -7,6 +7,7 @@ Process schedule management tools — 6 tools (ALL new vs JS version).
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Annotated, Any
 
@@ -15,6 +16,57 @@ from pydantic import Field
 
 from ..client import ODataParams, UiPathError
 from ..models import ProcessSchedule
+
+_TRIGGER_ENDPOINTS = (
+    ("ProcessSchedules", None),
+    ("ApiTriggers", "event"),
+    ("HttpTriggers", "api"),
+)
+
+
+def _trigger_type(item: dict[str, Any], default: str | None) -> str:
+    if default is not None:
+        return default
+    if item.get("QueueDefinitionId") is not None or item.get("QueueDefinitionName"):
+        return "queue"
+    return "time"
+
+
+def _machine_robot(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "machine_id": item.get("MachineId"),
+        "machine_name": item.get("MachineName"),
+        "robot_id": item.get("RobotId"),
+        "robot_username": item.get("RobotUserName") or item.get("RobotUsername"),
+        "host_machine_name": item.get("HostMachineName") or item.get("Hostname"),
+    }
+
+
+def _normalize_trigger(
+    item: dict[str, Any], endpoint: str, default_type: str | None
+) -> dict[str, Any]:
+    process_name = item.get("ReleaseName") or item.get("ProcessName")
+    return {
+        "id": item.get("Id"),
+        "name": item.get("Name"),
+        "release_name": item.get("ReleaseName") or process_name,
+        "release_id": item.get("ReleaseId") or item.get("ProcessId"),
+        "process_name": process_name,
+        "enabled": item.get("Enabled"),
+        "trigger_type": _trigger_type(item, default_type),
+        "source_endpoint": endpoint,
+        "time_zone_id": item.get("TimeZoneId"),
+        "cron_expression": item.get("StartProcessCron") or item.get("CronExpression"),
+        "start_at": item.get("StartAt"),
+        "next_execution": item.get("StartProcessNextOccurrence") or item.get("NextExecution"),
+        "strategy": item.get("StartStrategy") or item.get("Strategy"),
+        "stop_strategy": item.get("StopStrategy"),
+        "runtime_type": item.get("RuntimeType"),
+        "job_priority": item.get("JobPriority"),
+        "queue_definition_id": item.get("QueueDefinitionId"),
+        "queue_definition_name": item.get("QueueDefinitionName"),
+        "machine_robots": [_machine_robot(target) for target in item.get("MachineRobots", [])],
+    }
 
 
 def _state(ctx: Context) -> Any:
@@ -30,16 +82,28 @@ def register(mcp: FastMCP, read_only: bool = False) -> None:
         enabled_only: Annotated[bool, Field(description="Return only enabled schedules")] = False,
         top: Annotated[int, Field(ge=1, le=1000)] = 50,
     ) -> str:
-        """List all process schedules with their cron expressions and next execution times."""
+        """List all trigger types and their execution targets in a folder."""
         st = _state(ctx)
         try:
             params = ODataParams().top(top).count()
             if enabled_only:
                 params.filter("Enabled eq true")
-            data = await st.client.get("ProcessSchedules", params=params.build(), folder_id=folder_id)
-            schedules = [ProcessSchedule.model_validate(s).model_dump() for s in data.get("value", [])]
+            query = params.build()
+            responses = await asyncio.gather(
+                *(
+                    st.client.get(endpoint, params=query.copy(), folder_id=folder_id)
+                    for endpoint, _ in _TRIGGER_ENDPOINTS
+                )
+            )
+            schedules = [
+                _normalize_trigger(item, endpoint, default_type)
+                for (endpoint, default_type), data in zip(
+                    _TRIGGER_ENDPOINTS, responses, strict=True
+                )
+                for item in data.get("value", [])
+            ]
             return json.dumps(
-                {"total_count": data.get("@odata.count", len(schedules)), "schedules": schedules},
+                {"total_count": len(schedules), "schedules": schedules},
                 default=str,
             )
         except UiPathError as e:

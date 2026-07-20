@@ -280,7 +280,9 @@ If you prefer to pass credentials directly (e.g., CI/CD):
 
 ### Process Schedules (6) ⭐ All new
 
-- `list_schedules`, `get_schedule`
+- `list_schedules` — all time, queue, event/integration, and API/HTTP triggers,
+  including machine, robot account, and hostname execution targets
+- `get_schedule` — one process schedule by ID
 - `enable_schedule`, `disable_schedule`, `set_schedule_enabled`
 - `get_next_executions`
 
