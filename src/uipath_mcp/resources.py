@@ -135,7 +135,7 @@ Asset Management (7 tools)
   set_credential_asset ⭐ Update username+password on Credential assets
 
 Process Schedules (6 tools — all new ⭐)
-  list_schedules         With enabled filter
+  list_schedules         All trigger types with enabled filter and execution targets
   get_schedule           Single schedule by ID
   enable_schedule        Enable one schedule
   disable_schedule       Disable one schedule

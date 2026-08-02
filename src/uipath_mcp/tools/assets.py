@@ -126,18 +126,23 @@ def register(mcp: FastMCP, read_only: bool = False) -> None:
             """Update an existing asset's value or description."""
             st = _state(ctx)
             try:
-                body: dict[str, Any] = {}
+                updates: dict[str, Any] = {}
                 if string_value is not None:
-                    body["StringValue"] = string_value
+                    updates["StringValue"] = string_value
                 if integer_value is not None:
-                    body["IntValue"] = integer_value
+                    updates["IntValue"] = integer_value
                 if bool_value is not None:
-                    body["BoolValue"] = bool_value
+                    updates["BoolValue"] = bool_value
                 if description is not None:
-                    body["Description"] = description
-                if not body:
+                    updates["Description"] = description
+                if not updates:
                     return json.dumps({"error": "No update fields provided"})
-                await st.client.patch("Assets", asset_id, body, folder_id=folder_id)
+                # UiPath Orchestrator edits assets via PUT (full entity), not PATCH
+                # (PATCH is unrouted → 404). Fetch current entity, apply changes, PUT back.
+                current = await st.client.get_by_id("Assets", asset_id, folder_id=folder_id)
+                body = {k: v for k, v in current.items() if not k.startswith("@")}
+                body.update(updates)
+                await st.client.put("Assets", asset_id, body, folder_id=folder_id)
                 return json.dumps({"message": f"Asset {asset_id} updated"})
             except UiPathError as e:
                 return json.dumps(e.to_dict())
@@ -194,8 +199,12 @@ def register(mcp: FastMCP, read_only: bool = False) -> None:
             """Update the username and password of a Credential-type asset."""
             st = _state(ctx)
             try:
-                body = {"CredentialUsername": username, "CredentialPassword": password}
-                await st.client.patch("Assets", asset_id, body, folder_id=folder_id)
+                # Edit via PUT (full entity), consistent with update_asset.
+                current = await st.client.get_by_id("Assets", asset_id, folder_id=folder_id)
+                body = {k: v for k, v in current.items() if not k.startswith("@")}
+                body["CredentialUsername"] = username
+                body["CredentialPassword"] = password
+                await st.client.put("Assets", asset_id, body, folder_id=folder_id)
                 return json.dumps({"message": f"Credential asset {asset_id} updated"})
             except UiPathError as e:
                 return json.dumps(e.to_dict())

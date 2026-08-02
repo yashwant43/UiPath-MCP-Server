@@ -9,7 +9,7 @@ pytest-asyncio is configured in auto mode (no @pytest.mark.asyncio needed).
 from __future__ import annotations
 
 import os
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -22,6 +22,7 @@ os.environ.setdefault("UIPATH_TENANT_NAME", "TestTenant")
 
 from uipath_mcp.auth import TokenCache, _token_cache  # noqa: E402
 from uipath_mcp.config import AuthMode, Settings  # noqa: E402
+import uipath_mcp.config as _config_mod  # noqa: E402
 
 
 # ── Settings fixtures ─────────────────────────────────────────────────────────
@@ -53,6 +54,25 @@ def reset_token_cache() -> None:
     _token_cache.clear()
     yield
     _token_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def no_keyring():
+    """Prevent keyring from being used during tests.
+
+    Note: load_from_keyring accepts a ``profile`` kwarg, but MagicMock
+    handles extra keyword arguments transparently so no change is needed.
+    """
+    with patch("uipath_mcp.keyring_store.load_from_keyring", return_value={}):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def reset_settings_singleton():
+    """Reset the config singleton so each test starts fresh."""
+    _config_mod._settings = None
+    yield
+    _config_mod._settings = None
 
 
 # ── Mock context helpers ───────────────────────────────────────────────────────

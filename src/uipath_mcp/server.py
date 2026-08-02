@@ -70,8 +70,9 @@ async def _lifespan(server: FastMCP) -> AsyncIterator[AppState]:  # noqa: ARG001
         Console(stderr=True).print(
             Panel(
                 f"[bold red]Configuration Error[/bold red]\n\n{exc}\n\n"
-                "[yellow]Copy [bold].env.example[/bold] to [bold].env[/bold] "
-                "and fill in the required values.[/yellow]",
+                "[yellow]Run [bold]uipath-mcp auth setup[/bold] to store credentials "
+                "in the OS keyring, or copy [bold].env.example[/bold] to "
+                "[bold].env[/bold] and fill in the required values.[/yellow]",
                 title="UiPath MCP Server — Failed to Start",
                 border_style="red",
             )

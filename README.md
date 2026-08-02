@@ -4,19 +4,19 @@ A production-quality **Model Context Protocol (MCP)** server that connects AI as
 
 ## Why Python? Why better?
 
-| Dimension | JS Version | This Python Version |
-|-----------|-----------|---------------------|
-| HTTP client | node-fetch, no pooling | httpx HTTP/2 + connection pooling |
-| Retry logic | None | tenacity exponential+jitter, Retry-After |
-| Token caching | Per-instance (race-unsafe) | Module-level asyncio.Lock (thundering-herd safe) |
-| Config validation | process.env checks | Pydantic Settings, SecretStr, @model_validator |
-| Data models | TypeScript interfaces | Pydantic v2 with field aliases |
-| Error types | String errors | Structured UiPathError(message, status_code, error_code) |
-| Pagination | None | paginate() async generator + collect_all() |
-| Logging | console.log (stdout!) | loguru → stderr, JSON mode for prod |
-| Startup errors | Stack traces | rich Panel with actionable instructions |
-| Tool count | 30 | **53** (23 new tools) |
-| Tests | Unknown | pytest-asyncio + respx transport mocking |
+| Dimension         | JS Version                 | This Python Version                                      |
+| ----------------- | -------------------------- | -------------------------------------------------------- |
+| HTTP client       | node-fetch, no pooling     | httpx HTTP/2 + connection pooling                        |
+| Retry logic       | None                       | tenacity exponential+jitter, Retry-After                 |
+| Token caching     | Per-instance (race-unsafe) | Module-level asyncio.Lock (thundering-herd safe)         |
+| Config validation | process.env checks         | Pydantic Settings, SecretStr, @model_validator           |
+| Data models       | TypeScript interfaces      | Pydantic v2 with field aliases                           |
+| Error types       | String errors              | Structured UiPathError(message, status_code, error_code) |
+| Pagination        | None                       | paginate() async generator + collect_all()               |
+| Logging           | console.log (stdout!)      | loguru → stderr, JSON mode for prod                      |
+| Startup errors    | Stack traces               | rich Panel with actionable instructions                  |
+| Tool count        | 30                         | **53** (23 new tools)                                    |
+| Tests             | Unknown                    | pytest-asyncio + respx transport mocking                 |
 
 ---
 
@@ -94,9 +94,102 @@ UIPATH_TENANT_NAME=DefaultTenant
 
 ---
 
+## Secure Credential Storage (Recommended)
+
+Instead of putting secrets in plaintext config files, store them in your OS keyring
+(Windows Credential Manager, macOS Keychain, or Linux Secret Service):
+
+```bash
+# Interactive setup — prompts for credentials and stores them securely
+uipath-mcp auth setup
+
+# Verify stored credentials
+uipath-mcp auth test
+
+# Remove all stored credentials
+uipath-mcp auth clear
+```
+
+**Priority order:** Keyring > Environment variables > .env file
+
+When using keyring, your Claude Desktop config needs zero secrets:
+
+```json
+{
+  "mcpServers": {
+    "uipath": {
+      "command": "uipath-mcp"
+    }
+  }
+}
+
+Note: in the command: Replace it with the installed path if not working: ex: C:/Users/UiPath-MCP-Server/.venv/Scripts/uipath-mcp.exe
+```
+
+> Environment variables and `.env` files still work as a fallback (useful for CI/CD and Docker).
+
+### Multiple Profiles
+
+Store credentials for multiple tenants and switch between them per session:
+
+```bash
+# Setup profiles — auto-derives name from org/tenant, or use --profile
+uipath-mcp auth setup                          # prompts for profile name
+uipath-mcp auth setup --profile staging         # explicit name
+
+# List all stored profiles
+uipath-mcp auth list
+
+# Test a specific profile
+uipath-mcp auth test --profile staging
+
+# Start server with a profile
+uipath-mcp --profile staging
+
+# Remove a profile
+uipath-mcp auth clear --profile staging
+```
+
+Profile resolution order: `--profile` flag > `UIPATH_PROFILE` env var > `"default"`
+
+Each profile can have its own read-only mode setting (prompted during setup).
+
+**Claude Desktop with profiles:**
+
+```json
+{
+  "mcpServers": {
+    "uipath-prod": {
+      "command": "uipath-mcp",
+      "args": ["--profile", "prod"]
+    },
+    "uipath-staging": {
+      "command": "uipath-mcp",
+      "args": ["--profile", "staging"]
+    }
+  }
+}
+```
+
+**Claude Code with profiles:**
+
+```bash
+uipath-mcp --profile prod
+# or via env var:
+UIPATH_PROFILE=prod uipath-mcp
+```
+
+---
+
 ## Claude Desktop / Cursor Configuration
 
-### If installed via PyPI (`uv tool install uipath-orchestrator-mcp`)
+### Recommended: Keyring (no secrets in config)
+
+Run `uipath-mcp auth setup` first, then use the minimal config above.
+
+### Alternative: Inline env vars
+
+If you prefer to pass credentials directly (e.g., CI/CD):
 
 ```json
 {
@@ -151,6 +244,7 @@ UIPATH_TENANT_NAME=DefaultTenant
 ## Available Tools (53 total)
 
 ### Job Management (12)
+
 - `list_jobs` — Filter by state/process, paginate, order
 - `list_running_jobs` — Shortcut: only Running jobs
 - `list_failed_jobs` — Shortcut: Faulted jobs with date filter
@@ -165,6 +259,7 @@ UIPATH_TENANT_NAME=DefaultTenant
 - `wait_for_job` ⭐ — Poll until terminal state with progress reporting
 
 ### Queue Management (10)
+
 - `list_queues`, `get_queue`
 - `add_queue_item`, `bulk_add_queue_items` ⭐ (up to 1000 items at once)
 - `list_queue_items`, `get_queue_item`
@@ -172,34 +267,43 @@ UIPATH_TENANT_NAME=DefaultTenant
 - `get_queue_stats`, `retry_failed_items` ⭐
 
 ### Robot & Machine Management (8)
+
 - `list_robots`, `get_robot`, `list_available_robots` ⭐
 - `list_robot_sessions` ⭐, `list_robot_logs`
 - `list_machines`, `get_machine`, `get_robot_license_info` ⭐
 
 ### Asset Management (7)
+
 - `list_assets`, `get_asset`
 - `create_asset` ⭐, `update_asset` ⭐, `delete_asset` ⭐
 - `get_robot_asset`, `set_credential_asset` ⭐
 
 ### Process Schedules (6) ⭐ All new
-- `list_schedules`, `get_schedule`
+
+- `list_schedules` — all time, queue, event/integration, and API/HTTP triggers,
+  including machine, robot account, and hostname execution targets
+- `get_schedule` — one process schedule by ID
 - `enable_schedule`, `disable_schedule`, `set_schedule_enabled`
 - `get_next_executions`
 
 ### Folder Management (5) ⭐ All new
+
 - `list_folders`, `get_folder`, `list_sub_folders`
 - `list_folder_robots`, `get_folder_stats`
 
 ### Analytics (6)
+
 - `get_jobs_stats`, `get_queue_processing_stats`
 - `get_license_usage`, `get_robot_utilization`
 - `get_tenant_stats`, `get_error_patterns` ⭐
 
 ### Audit Logs (4)
+
 - `list_audit_logs`, `get_audit_log_detail` ⭐
 - `list_robot_logs`, `export_audit_logs` ⭐
 
 ### Webhooks (4) ⭐ All new
+
 - `list_webhooks`, `create_webhook`, `update_webhook`, `delete_webhook`
 
 ⭐ = New in Python version (not in JS original)
@@ -209,6 +313,7 @@ UIPATH_TENANT_NAME=DefaultTenant
 ## Resources
 
 Read-only resources available to AI clients:
+
 - `uipath://config/server` — Active server configuration (no secrets)
 - `uipath://help/odata-filters` — OData filter syntax reference
 - `uipath://help/tool-overview` — Quick reference of all tools
@@ -217,25 +322,27 @@ Read-only resources available to AI clients:
 
 ## Configuration Reference
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `AUTH_MODE` | cloud \| on_prem \| pat | `cloud` |
-| `UIPATH_CLIENT_ID` | Cloud app client ID | — |
-| `UIPATH_CLIENT_SECRET` | Cloud app client secret | — |
-| `UIPATH_ORG_NAME` | Organization slug | — |
-| `UIPATH_TENANT_NAME` | Tenant name | — |
-| `UIPATH_BASE_URL` | On-prem Orchestrator URL | — |
-| `UIPATH_USERNAME` | On-prem username | — |
-| `UIPATH_PASSWORD` | On-prem password | — |
-| `UIPATH_PAT` | Personal Access Token | — |
-| `UIPATH_FOLDER_ID` | Default folder ID | — |
-| `MCP_TRANSPORT` | stdio \| sse \| streamable-http | `stdio` |
-| `MCP_HOST` | Host for HTTP transport | `127.0.0.1` |
-| `MCP_PORT` | Port for HTTP transport | `8000` |
-| `HTTP_TIMEOUT` | Request timeout (seconds) | `30.0` |
-| `RETRY_MAX_ATTEMPTS` | Max retry attempts | `3` |
-| `LOG_LEVEL` | DEBUG \| INFO \| WARNING \| ERROR | `INFO` |
-| `LOG_JSON` | Structured JSON logs | `false` |
+| Variable               | Description                       | Default     |
+| ---------------------- | --------------------------------- | ----------- |
+| `AUTH_MODE`            | cloud \| on_prem \| pat           | `cloud`     |
+| `UIPATH_CLIENT_ID`     | Cloud app client ID               | —           |
+| `UIPATH_CLIENT_SECRET` | Cloud app client secret           | —           |
+| `UIPATH_ORG_NAME`      | Organization slug                 | —           |
+| `UIPATH_TENANT_NAME`   | Tenant name                       | —           |
+| `UIPATH_BASE_URL`      | On-prem Orchestrator URL          | —           |
+| `UIPATH_USERNAME`      | On-prem username                  | —           |
+| `UIPATH_PASSWORD`      | On-prem password                  | —           |
+| `UIPATH_PAT`           | Personal Access Token             | —           |
+| `UIPATH_FOLDER_ID`     | Default folder ID                 | —           |
+| `UIPATH_PROFILE`       | Keyring profile name              | `default`   |
+| `READ_ONLY_MODE`       | Disable write tools               | `false`     |
+| `MCP_TRANSPORT`        | stdio \| sse \| streamable-http   | `stdio`     |
+| `MCP_HOST`             | Host for HTTP transport           | `127.0.0.1` |
+| `MCP_PORT`             | Port for HTTP transport           | `8000`      |
+| `HTTP_TIMEOUT`         | Request timeout (seconds)         | `30.0`      |
+| `RETRY_MAX_ATTEMPTS`   | Max retry attempts                | `3`         |
+| `LOG_LEVEL`            | DEBUG \| INFO \| WARNING \| ERROR | `INFO`      |
+| `LOG_JSON`             | Structured JSON logs              | `false`     |
 
 ---
 
@@ -261,12 +368,14 @@ uv run mypy src/
 
 ```
 src/uipath_mcp/
-├── server.py     FastMCP + lifespan (initialises client once)
-├── config.py     Pydantic Settings (all env vars, cross-field validation)
-├── auth.py       3 auth strategies + module-level TokenCache with asyncio.Lock
-├── client.py     httpx AsyncClient + tenacity retry + ODataParams builder + paginate()
-├── models.py     Pydantic v2 models (Job, Queue, Robot, Asset, ...)
-├── resources.py  MCP resources (config, help guides)
+├── cli.py            Click CLI dispatcher (auth setup/test/clear + server start)
+├── server.py         FastMCP + lifespan (initialises client once)
+├── config.py         Pydantic Settings (keyring → env vars → .env → defaults)
+├── keyring_store.py  OS keyring integration (store/load/clear credentials)
+├── auth.py           3 auth strategies + module-level TokenCache with asyncio.Lock
+├── client.py         httpx AsyncClient + tenacity retry + ODataParams builder + paginate()
+├── models.py         Pydantic v2 models (Job, Queue, Robot, Asset, ...)
+├── resources.py      MCP resources (config, help guides)
 └── tools/
     ├── jobs.py      analytics.py
     ├── queues.py    audit.py
@@ -276,6 +385,7 @@ src/uipath_mcp/
 ```
 
 Token refresh uses double-checked locking to prevent thundering-herd refreshes:
+
 ```python
 if cache.is_valid: return cache.access_token   # fast path (99% of calls)
 async with cache._lock:                         # slow path
